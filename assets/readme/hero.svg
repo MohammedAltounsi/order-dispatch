@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="title desc">
+  <title id="title">order-dispatch: a multithreaded order dispatcher in C++20</title>
+  <desc id="desc">Orders flow from branches through a bounded queue to workers and a dedupe step. At 300,000 orders per second offered, the p99 wait is 6,211 microseconds with a 1024-slot queue and 590 microseconds with a 64-slot queue. Both reject 42 percent of orders.</desc>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#616c7c"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="400" rx="24" fill="#0a0c10"/>
+  <rect x="0.5" y="0.5" width="1199" height="399" rx="24" fill="none" stroke="#222a34"/>
+
+  <g id="title-block" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <text x="64" y="92" font-size="18" letter-spacing="2" fill="#616c7c">C++20 · THREADS · LOCK-FREE</text>
+    <text x="64" y="164" font-size="46" font-weight="700" fill="#e8ecf2" textLength="392" lengthAdjust="spacingAndGlyphs">order-dispatch</text>
+    <rect x="470" y="128" width="12" height="40" fill="#34d99b"/>
+    <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="26" fill="#97a2b2">
+      <text x="64" y="226">Branches send orders to kitchen workers.</text>
+      <text x="64" y="262">It compares a lock-free queue with a</text>
+      <text x="64" y="298">mutex queue and measures the latency.</text>
+    </g>
+  </g>
+
+  <g id="pipeline" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" text-anchor="middle">
+    <rect x="690" y="52" width="98" height="40" rx="8" fill="#12161d" stroke="#2f3a46"/>
+    <text x="739" y="78" fill="#e8ecf2">branch</text>
+    <line x1="790" y1="72" x2="808" y2="72" stroke="#616c7c" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="812" y="52" width="88" height="40" rx="8" fill="#372c12" stroke="#4a3a18"/>
+    <text x="856" y="78" fill="#f2b23c">queue</text>
+    <line x1="902" y1="72" x2="920" y2="72" stroke="#616c7c" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="924" y="52" width="98" height="40" rx="8" fill="#12161d" stroke="#2f3a46"/>
+    <text x="973" y="78" fill="#e8ecf2">worker</text>
+    <line x1="1024" y1="72" x2="1042" y2="72" stroke="#616c7c" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="1046" y="52" width="98" height="40" rx="8" fill="#12352a" stroke="#1c4c3b"/>
+    <text x="1095" y="78" fill="#34d99b">dedupe</text>
+    <text x="1144" y="130" text-anchor="end" fill="#616c7c">5% of orders sent twice</text>
+    <text x="1144" y="156" text-anchor="end" fill="#616c7c">each repeat dropped once</text>
+  </g>
+
+  <g id="result" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <rect x="690" y="190" width="454" height="166" rx="12" fill="#12161d" stroke="#222a34"/>
+    <text x="714" y="222" font-size="18" fill="#97a2b2">300k orders/s, capacity ~174k/s</text>
+    <line x1="714" y1="236" x2="1120" y2="236" stroke="#222a34"/>
+    <text x="714" y="268" font-size="20" fill="#e8ecf2">queue 1024 · p99</text>
+    <text x="1120" y="268" font-size="20" text-anchor="end" fill="#ff6058">6,211 µs</text>
+    <text x="714" y="300" font-size="20" fill="#e8ecf2">queue 64 · p99</text>
+    <text x="1120" y="300" font-size="20" text-anchor="end" fill="#34d99b">590 µs</text>
+    <line x1="714" y1="314" x2="1120" y2="314" stroke="#2f3a46" stroke-width="2"/>
+    <text x="714" y="342" font-size="18" letter-spacing="2" fill="#616c7c">REJECTED</text>
+    <text x="1120" y="344" font-size="22" font-weight="700" text-anchor="end" fill="#e8ecf2">42% both</text>
+  </g>
+</svg>

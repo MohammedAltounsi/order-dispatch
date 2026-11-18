@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
+  <title id="title">p99 latency at different loads and queue sizes</title>
+  <desc id="desc">Median of 5 runs, 4 workers with about 174,000 orders per second of capacity. 100k orders per second with a 1024 queue: p99 297 microseconds, none rejected. 180k with 1024: 1,975 microseconds, none rejected. 300k with 1024: 6,211 microseconds, 42 percent rejected. 300k with 64: 590 microseconds, 42 percent rejected.</desc>
+  <rect width="1200" height="330" rx="24" fill="#0a0c10"/>
+  <rect x="0.5" y="0.5" width="1199" height="329" rx="24" fill="none" stroke="#222a34"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <text x="64" y="64" font-size="18" letter-spacing="2" fill="#616c7c">P99 WAIT · ORDERS/S OFFERED, QUEUE SIZE</text>
+    <text x="1136" y="64" font-size="18" letter-spacing="2" text-anchor="end" fill="#616c7c">REJECTED</text>
+
+    <!-- scale: 6,500 µs = 640 units, bars start at x=330 -->
+    <g font-size="20">
+      <text x="64" y="117" fill="#97a2b2">100k/s, 1024</text>
+      <rect x="330" y="98" width="29" height="26" rx="4" fill="#34d99b"/>
+      <text x="371" y="118" fill="#e8ecf2">297 µs</text>
+      <text x="1136" y="118" text-anchor="end" fill="#97a2b2">0%</text>
+
+      <text x="64" y="167" fill="#97a2b2">180k/s, 1024</text>
+      <rect x="330" y="148" width="194" height="26" rx="4" fill="#f2b23c"/>
+      <text x="536" y="168" fill="#e8ecf2">1,975 µs</text>
+      <text x="1136" y="168" text-anchor="end" fill="#97a2b2">0%</text>
+
+      <text x="64" y="217" fill="#97a2b2">300k/s, 1024</text>
+      <rect x="330" y="198" width="612" height="26" rx="4" fill="#ff6058"/>
+      <text x="954" y="218" fill="#e8ecf2">6,211 µs</text>
+      <text x="1136" y="218" text-anchor="end" fill="#97a2b2">42%</text>
+
+      <text x="64" y="267" fill="#97a2b2">300k/s, 64</text>
+      <rect x="330" y="248" width="58" height="26" rx="4" fill="#34d99b"/>
+      <text x="400" y="268" fill="#e8ecf2">590 µs</text>
+      <text x="1136" y="268" text-anchor="end" fill="#97a2b2">42%</text>
+    </g>
+    <text x="64" y="308" font-size="18" fill="#616c7c">Same share rejected; the smaller queue keeps the accepted orders fast.</text>
+  </g>
+</svg>

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="456" viewBox="0 0 1200 456" role="img" aria-labelledby="title desc">
+  <title id="title">Throughput: mutex queue vs lock-free ring, and 1 dedupe shard vs 64</title>
+  <desc id="desc">Median orders per second over 5 runs. Mutex queue with 4 workers: 310,966. Ring with 4 workers: 4,561,051. Mutex with 8 workers: 391,573. Ring with 8 workers: 5,104,784. Ring with 8 workers and 1 dedupe shard: 2,473,365. With 64 shards: 6,133,245.</desc>
+  <rect width="1200" height="456" rx="24" fill="#0a0c10"/>
+  <rect x="0.5" y="0.5" width="1199" height="455" rx="24" fill="none" stroke="#222a34"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <text x="64" y="64" font-size="18" letter-spacing="2" fill="#616c7c">ORDERS PER SECOND · MEDIAN OF 5 RUNS</text>
+
+    <!-- scale: 6,200,000 orders/s = 700 units, bars start at x=330 -->
+    <g font-size="20">
+      <text x="64" y="117" fill="#97a2b2">mutex, 4 workers</text>
+      <rect x="330" y="98" width="35" height="26" rx="4" fill="#f2b23c"/>
+      <text x="377" y="118" fill="#e8ecf2">311k</text>
+
+      <text x="64" y="161" fill="#97a2b2">ring, 4 workers</text>
+      <rect x="330" y="142" width="515" height="26" rx="4" fill="#34d99b"/>
+      <text x="857" y="162" fill="#e8ecf2">4.56M</text>
+
+      <text x="64" y="205" fill="#97a2b2">mutex, 8 workers</text>
+      <rect x="330" y="186" width="44" height="26" rx="4" fill="#f2b23c"/>
+      <text x="386" y="206" fill="#e8ecf2">392k</text>
+
+      <text x="64" y="249" fill="#97a2b2">ring, 8 workers</text>
+      <rect x="330" y="230" width="576" height="26" rx="4" fill="#34d99b"/>
+      <text x="918" y="250" fill="#e8ecf2">5.10M</text>
+    </g>
+
+    <line x1="64" y1="288" x2="1136" y2="288" stroke="#222a34"/>
+    <text x="64" y="326" font-size="18" letter-spacing="2" fill="#616c7c">DEDUPE LOCKS · RING, 8 WORKERS</text>
+
+    <g font-size="20">
+      <text x="64" y="371" fill="#97a2b2">1 shard</text>
+      <rect x="330" y="352" width="279" height="26" rx="4" fill="#f2b23c"/>
+      <text x="621" y="372" fill="#e8ecf2">2.47M</text>
+
+      <text x="64" y="415" fill="#97a2b2">64 shards</text>
+      <rect x="330" y="396" width="692" height="26" rx="4" fill="#34d99b"/>
+      <text x="1034" y="416" fill="#e8ecf2">6.13M</text>
+    </g>
+  </g>
+</svg>

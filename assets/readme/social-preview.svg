@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#616c7c"/>
+    </marker>
+  </defs>
+  <rect width="1280" height="640" fill="#0a0c10"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <text x="80" y="128" font-size="24" letter-spacing="3" fill="#616c7c">C++20 · THREADS · LOCK-FREE</text>
+    <text x="80" y="226" font-size="80" font-weight="700" fill="#e8ecf2">order-dispatch</text>
+    <rect x="718" y="160" width="18" height="72" fill="#34d99b"/>
+    <text x="80" y="296" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="34" fill="#97a2b2">Lock-free vs mutex queue, sharded dedupe, p99 under overload.</text>
+
+    <g font-size="24" text-anchor="middle">
+      <rect x="80" y="372" width="150" height="56" rx="10" fill="#12161d" stroke="#2f3a46"/>
+      <text x="155" y="408" fill="#e8ecf2">branch</text>
+      <line x1="234" y1="400" x2="262" y2="400" stroke="#616c7c" stroke-width="3" marker-end="url(#arr)"/>
+      <rect x="266" y="372" width="130" height="56" rx="10" fill="#372c12" stroke="#4a3a18"/>
+      <text x="331" y="408" fill="#f2b23c">queue</text>
+      <line x1="400" y1="400" x2="428" y2="400" stroke="#616c7c" stroke-width="3" marker-end="url(#arr)"/>
+      <rect x="432" y="372" width="150" height="56" rx="10" fill="#12161d" stroke="#2f3a46"/>
+      <text x="507" y="408" fill="#e8ecf2">worker</text>
+      <line x1="586" y1="400" x2="614" y2="400" stroke="#616c7c" stroke-width="3" marker-end="url(#arr)"/>
+      <rect x="618" y="372" width="150" height="56" rx="10" fill="#12352a" stroke="#1c4c3b"/>
+      <text x="693" y="408" fill="#34d99b">dedupe</text>
+    </g>
+
+    <g font-size="28">
+      <text x="80" y="520" fill="#97a2b2">ring vs mutex</text>
+      <text x="420" y="520" font-weight="700" fill="#34d99b">15x throughput</text>
+      <text x="80" y="566" fill="#97a2b2">p99 at 172% load</text>
+      <text x="420" y="566" font-weight="700" fill="#e8ecf2">6.2 ms → 0.59 ms</text>
+      <text x="760" y="566" fill="#616c7c">(queue 1024 → 64)</text>
+    </g>
+  </g>
+</svg>
