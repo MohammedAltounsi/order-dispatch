@@ -12,9 +12,12 @@ add_executable(order_dispatch src/main.cpp)
 target_link_libraries(order_dispatch Threads::Threads)
 
 add_executable(order_dispatch_tests tests/test_main.cpp)
-target_compile_options(order_dispatch_tests PRIVATE -UNDEBUG)  # keep asserts on in Release
 target_link_libraries(order_dispatch_tests Threads::Threads)
 
 enable_testing()
 add_test(NAME unit COMMAND order_dispatch_tests)
-add_test(NAME end_to_end COMMAND order_dispatch --orders 20000)
+add_test(NAME closed_loop_mutex COMMAND order_dispatch --queue mutex --orders 20000)
+add_test(NAME closed_loop_ring COMMAND order_dispatch --queue ring --orders 20000)
+add_test(NAME open_loop_overload COMMAND order_dispatch --queue mutex --rate 400000 --work-ns 20000 --capacity 64 --orders 20000)
+add_test(NAME bad_flag_is_rejected COMMAND order_dispatch --workers 0)
+set_tests_properties(bad_flag_is_rejected PROPERTIES WILL_FAIL TRUE)

@@ -1,12 +1,14 @@
 #pragma once
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
-// Percentile by nearest rank on a sorted copy. Averages hide the slow tail; p99 shows it.
-inline std::int64_t percentile(std::vector<std::int64_t> v, double p) {
-  if (v.empty()) return 0;
-  std::sort(v.begin(), v.end());
-  std::size_t rank = static_cast<std::size_t>(p / 100.0 * (v.size() - 1) + 0.5);
-  return v[std::min(rank, v.size() - 1)];
+// Nearest-rank percentile on an already sorted vector: the smallest sample with
+// at least p% of all samples at or below it. Sort once, then ask for p50/p99/p99.9.
+inline std::int64_t percentile(const std::vector<std::int64_t>& sorted, double p) {
+  if (sorted.empty()) return 0;
+  if (p <= 0) return sorted.front();
+  auto rank = static_cast<std::size_t>(std::ceil(p / 100.0 * static_cast<double>(sorted.size())));
+  return sorted[std::min(rank, sorted.size()) - 1];
 }

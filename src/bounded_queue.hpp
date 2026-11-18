@@ -3,16 +3,19 @@
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 
-// Multi-producer, multi-consumer queue with a fixed capacity.
-// A full queue blocks producers (backpressure) instead of growing memory without limit.
+// Mutex + condition-variable queue with a fixed capacity. Many producers, many consumers.
+// Idle consumers sleep instead of burning CPU, at the cost of a lock on every push and pop.
 template <typename T>
 class BoundedQueue {
  public:
-  explicit BoundedQueue(std::size_t capacity) : capacity_(capacity) {}
+  explicit BoundedQueue(std::size_t capacity) : capacity_(capacity) {
+    if (capacity == 0) throw std::invalid_argument("capacity must be at least 1");
+  }
 
-  // Blocks while full. Returns false if the queue was closed.
-  bool push(T item) {
+  // Blocks while full. False if the queue was closed.
+  [[nodiscard]] bool push(T item) {
     std::unique_lock lock(mu_);
     not_full_.wait(lock, [&] { return closed_ || items_.size() < capacity_; });
     if (closed_) return false;
@@ -21,7 +24,16 @@ class BoundedQueue {
     return true;
   }
 
-  // Blocks while empty. Returns nullopt once closed and drained.
+  // Never blocks. False if full or closed: the caller decides whether to shed or retry.
+  [[nodiscard]] bool try_push(T item) {
+    std::lock_guard lock(mu_);
+    if (closed_ || items_.size() >= capacity_) return false;
+    items_.push_back(std::move(item));
+    not_empty_.notify_one();
+    return true;
+  }
+
+  // Blocks while empty. nullopt once closed and drained.
   std::optional<T> pop() {
     std::unique_lock lock(mu_);
     not_empty_.wait(lock, [&] { return closed_ || !items_.empty(); });
@@ -32,7 +44,6 @@ class BoundedQueue {
     return item;
   }
 
-  // No more pushes; consumers drain what is left, then stop.
   void close() {
     std::lock_guard lock(mu_);
     closed_ = true;
