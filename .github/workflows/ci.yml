@@ -1,0 +1,10 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build-test-sanitize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # TSan aborts on runners with high mmap randomisation; lower it for this job.
+      - run: sudo sysctl vm.mmap_rnd_bits=28
+      - run: ./ci.sh
