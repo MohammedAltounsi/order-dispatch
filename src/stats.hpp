@@ -4,8 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-// Nearest-rank percentile on an already sorted vector: the smallest sample with
-// at least p% of all samples at or below it. Sort once, then ask for p50/p99/p99.9.
+// Nearest-rank percentile. Expects a sorted vector, so sort once and call it a few times.
 inline std::int64_t percentile(const std::vector<std::int64_t>& sorted, double p) {
   if (sorted.empty()) return 0;
   if (p <= 0) return sorted.front();

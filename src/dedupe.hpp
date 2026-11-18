@@ -5,10 +5,8 @@
 #include <unordered_set>
 #include <vector>
 
-// Order IDs already processed. first_time() is true once per ID, false for every repeat.
-// Each shard has its own mutex and its own 64-byte cache line, so two workers only
-// wait on each other when their IDs land in the same shard.
-// The set never shrinks: fine for a benchmark run, a real service would expire old IDs.
+// IDs we've already processed. first_time() returns true once per ID.
+// One mutex per shard, one cache line per shard. Never shrinks (fine for a benchmark run).
 class ShardedDedupe {
  public:
   explicit ShardedDedupe(std::size_t shards, std::size_t expected_ids = 0) : shards_(shards) {
@@ -23,9 +21,8 @@ class ShardedDedupe {
     return s.seen.insert(id).second;
   }
 
-  // libstdc++'s std::hash<uint64_t> returns the ID unchanged, so "id % shards" would send
-  // order i of every branch (branch in the high 32 bits) to the same shard at the same moment.
-  // The splitmix64 finalizer mixes every input bit into every output bit; keep the top bits.
+  // Don't use std::hash here: in libstdc++ it returns the ID as-is, and since the branch
+  // lives in the high bits, order i from every branch hit the same shard. splitmix64 mixes it.
   std::size_t shard_of(std::uint64_t id) const {
     if (bits_ == 0) return 0;
     id ^= id >> 30; id *= 0xBF58476D1CE4E5B9ull;

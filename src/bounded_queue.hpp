@@ -5,8 +5,8 @@
 #include <optional>
 #include <stdexcept>
 
-// Mutex + condition-variable queue with a fixed capacity. Many producers, many consumers.
-// Idle consumers sleep instead of burning CPU, at the cost of a lock on every push and pop.
+// Fixed-size queue on a mutex and two condition variables. Idle consumers sleep,
+// but every push and pop takes the lock.
 template <typename T>
 class BoundedQueue {
  public:
@@ -24,7 +24,7 @@ class BoundedQueue {
     return true;
   }
 
-  // Never blocks. False if full or closed: the caller decides whether to shed or retry.
+  // Never blocks. False if full or closed; the caller decides what to do with the order.
   [[nodiscard]] bool try_push(T item) {
     std::lock_guard lock(mu_);
     if (closed_ || items_.size() >= capacity_) return false;

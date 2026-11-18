@@ -1,126 +1,136 @@
 # order-dispatch
 
-Restaurant branches send orders to kitchen workers through a bounded queue. Some orders arrive
-twice, the way a delivery app retries a webhook, and every repeat has to be dropped exactly once.
-C++20, about 500 lines, no dependencies.
+Branches send orders to kitchen workers through a bounded queue. About 5% of orders show up
+twice, the way a delivery app retries a webhook, and each repeat has to be dropped exactly once.
+
+It's C++20, around 500 lines, no dependencies.
 
 ```
-branch threads ──► bounded queue ──► worker threads ──► dedupe (sharded) ──► kitchen
-                   mutex or lock-free                   one lock per shard
+branch threads -> bounded queue -> worker threads -> dedupe (sharded) -> kitchen
+                  mutex or lock-free                  one lock per shard
 ```
 
-I wrote it to measure three questions I kept hand-waving about: how much a lock-free queue
-actually buys, how much one shared lock costs, and what queue size does to latency when a
-rush arrives faster than the kitchen can work.
+I built it because I'd been giving hand-wavy answers to questions like "is a lock-free queue
+worth it?" and "how big should the queue be?" Now I have numbers.
 
 ## Results
 
-Docker (WSL2) on an i5-14600K, 20 hardware threads, mixed performance and efficiency cores.
-Each row is the median of 5 runs after a warm-up, with the min–max range in brackets.
-`./bench.sh` reproduces all of it.
+Run in Docker (WSL2) on an i5-14600K, 20 hardware threads, a mix of P-cores and E-cores. Each row
+is the median of 5 runs after one warm-up run, with the slowest and fastest run in brackets.
+`./bench.sh` reproduces everything below.
 
-### 1. Mutex queue vs lock-free ring
+### Mutex queue vs lock-free ring
 
-Closed loop: 8 branches push as fast as the queue accepts, 1.6M orders.
+8 branches push as fast as the queue will take orders (1.6M orders total).
 
-| Queue, workers | Throughput (orders/s) |
+| Queue, workers | Orders/s |
 |---|---|
-| mutex, 4 | 310,966 (301,828–315,272) |
-| ring, 4 | 4,561,051 (4,447,107–4,638,827) |
-| mutex, 8 | 391,573 (368,669–473,687) |
-| ring, 8 | 5,104,784 (4,527,589–5,375,883) |
+| mutex, 4 | 310,966 (301,828-315,272) |
+| ring, 4 | 4,561,051 (4,447,107-4,638,827) |
+| mutex, 8 | 391,573 (368,669-473,687) |
+| ring, 8 | 5,104,784 (4,527,589-5,375,883) |
 
-The ring is about 15× faster here. With 16 threads on one mutex, most of the time goes to
-waiting for the lock and waking sleeping threads. The ring has no lock, and each slot sits on its
-own cache line. The cost: an idle ring consumer spins instead of sleeping, so it burns a core when
-there is no work. With bursty, low traffic the mutex queue is the better default.
+The ring does about 15x the mutex queue here. With 16 threads on one mutex, most of the time
+goes into waiting for the lock and waking threads back up. The ring has no lock and each slot
+has its own cache line.
 
-### 2. One lock vs 64 for the dedupe set
+The catch is that an idle ring consumer spins. It keeps a core busy even when there's nothing to
+do. For quiet or bursty traffic I'd still start with the mutex queue.
+
+### One dedupe lock vs 64
 
 Ring queue, 8 workers.
 
-| Shards | Throughput (orders/s) |
+| Shards | Orders/s |
 |---|---|
-| 1 | 2,473,365 (2,437,830–2,504,152) |
-| 64 | 6,133,245 (4,471,876–6,350,638) |
+| 1 | 2,473,365 (2,437,830-2,504,152) |
+| 64 | 6,133,245 (4,471,876-6,350,638) |
 
-With one shard, every worker takes the same mutex on every order. Splitting the set into 64,
-each on its own cache line, gives 2.5×. A bug I hit along the way: libstdc++'s
-`std::hash<uint64_t>` returns the ID unchanged, and my IDs put the branch in the high bits, so
-`id % 64` sent order *i* of every branch to the same shard at the same moment. The shard is now
-picked with the splitmix64 finalizer, and a test checks the spread.
+With one shard every worker grabs the same mutex on every order. 64 shards, each on its own
+cache line, is 2.5x faster.
 
-### 3. A rush faster than the kitchen
+I hit a bug here. In libstdc++, `std::hash<uint64_t>` just returns the number. My IDs keep the
+branch in the high 32 bits, so `id % 64` put order 1 from every branch on the same shard, then
+order 2, and so on. The shard is now picked with the splitmix64 mixer, and there's a test that
+checks the spread.
 
-Open loop: orders arrive on a fixed schedule whether or not workers keep up, and latency runs
-from each order's scheduled arrival to the end of processing. 4 workers spend 20 µs per order,
-so capacity is about 200k orders/s on paper. Measured, it's about 174k/s.
+### A rush the kitchen can't keep up with
 
-| Offered load, queue capacity | p50 (µs) | p99 (µs) | p99.9 (µs) | Shed |
+Here orders arrive on a fixed schedule whether the workers keep up or not, and latency is
+measured from when each order was supposed to arrive until a worker finishes it. 4 workers spend
+20 µs on each order. On paper that's 200k orders/s; I measured about 174k/s.
+
+| Orders/s offered, queue size | p50 (µs) | p99 (µs) | p99.9 (µs) | Rejected |
 |---|---|---|---|---|
-| 100k/s, 1024 | 126 | 297 | 408 | 0% |
-| 180k/s, 1024 | 261 | 1,975 | 2,180 | 0% |
-| 300k/s, 1024 | 5,662 | 6,211 | 6,350 | 42.1% |
-| 300k/s, 64 | 401 | 590 | 703 | 42.2% |
+| 100k, 1024 | 126 | 297 | 408 | 0% |
+| 180k, 1024 | 261 | 1,975 | 2,180 | 0% |
+| 300k, 1024 | 5,662 | 6,211 | 6,350 | 42.1% |
+| 300k, 64 | 401 | 590 | 703 | 42.2% |
 
-- **Near capacity, the tail grows first.** At 90% load the median barely moves but p99 is 7×
-  higher than at 50%, and it varies a lot run to run (1.0–5.8 ms). That's queueing: small
-  bursts pile up when there's no slack.
-- **Over capacity, the queue size sets the latency.** Both sizes shed the same share, because the
-  excess has nowhere to go. The difference is what happens to the orders that are accepted. A
-  1024 queue makes each one wait behind about 1000 others, roughly 6 ms. A 64 queue keeps p99
-  under 0.6 ms. By Little's law, wait ≈ queue length ÷ throughput: 1024 ÷ 174k ≈ 5.9 ms.
-- So the queue bound is a latency budget. Size it from the wait you can accept, and reject the rest
-  early (an HTTP 429 with Retry-After) so the client can retry or route elsewhere.
+At 90% load the median hardly changes, but p99 is about 7x what it was at 50%, and it jumps
+around between runs (1.0 to 5.8 ms). There's no slack left, so small bursts pile up.
 
-The p50 of 126 µs at light load is more than the 20 µs of work because it includes the
-generator thread waking up late from `sleep_until`. Those late wake-ups count against the
-system, as they would for a real customer.
+Once orders come in faster than the workers can handle, both queue sizes reject the same share.
+The extra orders have nowhere to go either way. What changes is how long the accepted ones wait.
+With 1024 slots, an order sits behind about a thousand others, around 6 ms. With 64 slots, p99
+stays under 0.6 ms. That lines up with Little's law: 1024 / 174k per second is about 5.9 ms.
 
-## Measuring honestly
+So I think of the queue size as a latency budget. Pick it from how long an order is allowed to
+wait, and reject the rest straight away (a 429 with Retry-After) so the client can retry.
 
-My first version produced a nicer headline: shrinking the queue cut wait 7×. It was wrong.
-Each branch only created its next order after the queue accepted the last one, so when the queue
-was full, the waiting happened in orders that didn't exist yet and never got a timestamp
-(coordinated omission; see Gil Tene's wrk2). The fixed generator keeps a schedule, measures from
-the scheduled time, and sheds what doesn't fit.
+The 126 µs median at light load is higher than the 20 µs of work because the generator thread
+sometimes wakes up late from `sleep_until`. I count that lateness too, since a real customer
+would feel it.
 
-Every run checks itself and exits non-zero on failure: every order accepted at least once is
-processed exactly once, and every other accepted copy is counted as a dropped duplicate.
+## My first benchmark was wrong
 
-## Run
+The first version showed a 7x latency win from shrinking the queue. That number was fake. Each
+branch only made its next order after the queue accepted the previous one. When the queue was
+full, the waiting happened in orders that hadn't been created yet, so it never got measured.
+This is called coordinated omission (Gil Tene explains it in the wrk2 README).
+
+The generator now keeps to a schedule, starts the clock at the scheduled time, and rejects what
+doesn't fit.
+
+Every run also checks itself and exits non-zero if something's off. Each order that got into the
+queue at least once must be processed exactly once, and every other accepted copy must be counted
+as a dropped duplicate.
+
+## Running it
 
 ```bash
 docker build -t order-dispatch .
-docker run --rm order-dispatch                                   # one default run
-docker run --rm order-dispatch ./bench.sh                        # all tables above
+docker run --rm order-dispatch                  # one run with default settings
+docker run --rm order-dispatch ./bench.sh       # all the tables above
 docker run --rm --security-opt seccomp=unconfined order-dispatch ./ci.sh
 ```
 
-`ci.sh` builds with `-Wall -Wextra -Wpedantic -Werror`, runs the tests, then runs the tests and
-the binary (both queues, both load modes) under ThreadSanitizer and under AddressSanitizer +
-UndefinedBehaviorSanitizer. TSan needs address randomisation off, hence the seccomp flag locally
-and the `sysctl` line in the GitHub workflow.
+`ci.sh` builds with `-Wall -Wextra -Wpedantic -Werror` and runs the tests. Then it runs the tests
+and the real binary (both queues, both load modes) under ThreadSanitizer, and again under
+AddressSanitizer with UBSan. TSan needs address randomisation turned off, which is why there's a
+seccomp flag locally and a `sysctl` line in the GitHub workflow.
 
 Flags: `--queue mutex|ring`, `--branches`, `--workers`, `--orders` (per branch), `--capacity`,
-`--shards`, `--retry-pct`, `--rate` (orders/s, 0 = closed loop), `--work-ns`.
+`--shards`, `--retry-pct`, `--rate` (orders/s, 0 means push as fast as possible), `--work-ns`.
 
-## Files
+## Code
 
-- `src/mpmc_ring.hpp`: lock-free bounded queue, Dmitry Vyukov's design. Each slot has a
-  sequence number saying whose turn it is; producers and consumers claim positions with one
-  compare-and-swap and publish with release/acquire ordering.
-- `src/bounded_queue.hpp`: mutex + condition variable queue with the same interface.
-- `src/dedupe.hpp`: sharded set of seen order IDs.
-- `src/main.cpp`: load generator, workers, stats, self-check.
-- `tests/test_main.cpp`: exactly-once under 8 racing threads, nothing lost through a 4-slot queue
-  for both queues, FIFO, full-queue rejection, shard spread, percentile maths.
+- `src/mpmc_ring.hpp` is the lock-free queue, based on Dmitry Vyukov's bounded MPMC queue. Every
+  slot has a sequence number that says whose turn it is. A thread claims a position with one
+  compare-and-swap, and release/acquire ordering makes sure the reader sees the item.
+- `src/bounded_queue.hpp` is a mutex and condition-variable queue with the same interface.
+- `src/dedupe.hpp` is the sharded set of order IDs already seen.
+- `src/main.cpp` has the load generator, the workers, the stats and the self-check.
+- `tests/test_main.cpp` has 8 threads racing for the same IDs, nothing lost through a 4-slot
+  queue, FIFO order, a full queue rejecting pushes, the shard spread and the percentile maths.
 
-## Not done
+## What's missing
 
-- The seen-ID set never shrinks. A long-running service would expire IDs, for example two sets
-  rotated every retry window.
-- Single process, in memory. Across machines the queue is Kafka/SQS and the dedupe is a unique
-  key in the database.
-- Threads aren't pinned to cores, so the P-core/E-core mix adds noise; that's part of why the
-  ranges are reported.
+The seen-ID set never shrinks. A service that runs for weeks would need to expire old IDs, for
+example by keeping two sets and swapping them every retry window.
+
+It's one process, all in memory. Across several machines the queue would be something like Kafka
+or SQS, and the dedupe would be a unique key in the database.
+
+Threads aren't pinned to cores, so the P-core/E-core mix adds noise. That's part of why I report
+the range and not just one number.

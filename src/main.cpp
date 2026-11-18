@@ -1,14 +1,10 @@
-// order-dispatch: branch threads -> bounded queue -> worker threads -> dedupe -> kitchen.
-// A share of orders is delivered twice, like a delivery app retrying a webhook.
+// order-dispatch: branches -> bounded queue -> workers -> dedupe -> kitchen.
+// Some orders are sent twice, like a delivery app retrying a webhook.
 //
-// Two load modes:
-//   --rate 0 (default)  Closed loop. Branches push as fast as the queue accepts.
-//                       Reports throughput only: in a closed loop the producers slow down
-//                       to match the workers, so any latency number would be misleading.
-//   --rate N            Open loop. N orders/s arrive on a fixed schedule whether or not the
-//                       workers keep up. Latency runs from the scheduled arrival to the end of
-//                       processing. A full queue rejects the order (shed, like a 429) instead
-//                       of slowing arrivals down.
+// --rate 0 (default): branches push as fast as the queue takes them. Throughput only.
+//   Producers slow down to match the workers here, so a latency number would lie.
+// --rate N: N orders/s arrive on a schedule no matter what. Latency starts at the
+//   scheduled arrival. If the queue is full the order is rejected (think HTTP 429).
 #include <algorithm>
 #include <charconv>
 #include <chrono>
@@ -80,15 +76,15 @@ static Config parse(int argc, char** argv) {
   return c;
 }
 
-// Stand-in for real per-order work (writing to the branch POS). Busy-waits so the
-// worker's capacity is predictable: workers / work_ns orders per second.
+// Fake per-order work (think: writing to the branch POS). Busy-waits so capacity
+// is predictable, roughly workers / work_ns.
 static void work(long long ns) {
   if (ns <= 0) return;
   auto until = Clock::now() + nanoseconds(ns);
   while (Clock::now() < until) {}
 }
 
-struct alignas(64) WorkerStats {  // one cache line apart, so workers never write to each other's line
+struct alignas(64) WorkerStats {  // aligned so workers don't share a cache line
   std::vector<std::int64_t> latency_ns;
   std::uint64_t processed = 0, dropped = 0, revenue = 0;
 };
@@ -107,7 +103,7 @@ static int run(const Config& cfg) {
   std::vector<ProducerStats> ps(cfg.branches);
   if (open) for (auto& w : ws) w.latency_ns.reserve(total / cfg.workers + total / 10);
 
-  const auto t0 = Clock::now() + std::chrono::milliseconds(20);  // every thread is started by then
+  const auto t0 = Clock::now() + std::chrono::milliseconds(20);  // give the threads time to start
   const nanoseconds interval(open ? static_cast<long long>(1e9 * cfg.branches / cfg.rate) : 0);
 
   std::vector<std::thread> workers;
@@ -128,7 +124,7 @@ static int run(const Config& cfg) {
   for (int b = 0; b < cfg.branches; ++b) {
     producers.emplace_back([&, b] {
       ProducerStats& me = ps[b];
-      std::mt19937 rng(static_cast<unsigned>(b));  // fixed seed per branch: same orders every run
+      std::mt19937 rng(static_cast<unsigned>(b));  // fixed seed, same orders every run
       std::uniform_int_distribution<std::uint32_t> price(1'500, 9'000);
       std::uniform_int_distribution<int> pct(0, 99);
       for (long long i = 0; i < cfg.orders; ++i) {
@@ -160,8 +156,7 @@ static int run(const Config& cfg) {
   for (auto& w : ws) { processed += w.processed; dropped += w.dropped; lat.insert(lat.end(), w.latency_ns.begin(), w.latency_ns.end()); }
   for (auto& p : ps) { accepted += p.accepted; shed += p.shed; unique += p.unique_accepted; }
 
-  // Every order that got into the queue at least once is processed exactly once,
-  // and every other accepted copy is dropped as a duplicate.
+  // Anything that got into the queue is processed once; extra copies count as dropped.
   const bool ok = processed == unique && dropped == accepted - processed;
 
   std::printf("queue=%s branches=%lld workers=%lld capacity=%lld shards=%lld rate=%lld work_ns=%lld\n",

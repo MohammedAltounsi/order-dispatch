@@ -6,18 +6,16 @@
 #include <thread>
 #include <vector>
 
-// Lock-free bounded queue, Dmitry Vyukov's MPMC design (1024cores.net, "Bounded MPMC queue").
+// Lock-free bounded queue. Dmitry Vyukov's bounded MPMC queue (1024cores.net).
 //
-// Each slot carries a sequence number that says whose turn it is:
-//   seq == pos       the slot is empty and waiting for the producer that claims position pos
-//   seq == pos + 1   the slot holds the item for the consumer that claims position pos
-// A producer claims a position with one compare-and-swap on head_, writes the item, then
-// publishes it with a release store of seq = pos + 1. The consumer's acquire load of seq
-// guarantees it sees the item. After reading, the consumer sets seq = pos + capacity:
-// the slot is free again for the producer one lap later.
+// Each slot has a sequence number:
+//   seq == pos      empty, waiting for whichever producer claims position pos
+//   seq == pos + 1  full, waiting for whichever consumer claims position pos
+// Producer: CAS head_ to claim pos, write the item, then store seq = pos + 1 (release).
+// Consumer: load seq (acquire) so the item is visible, read it, then store
+// seq = pos + capacity so the slot is free for the producer on the next lap.
 //
-// Trade-off vs BoundedQueue: no lock and no kernel calls, but an idle consumer spins
-// (with yield) instead of sleeping, so it burns CPU when there is no work.
+// No lock, but an idle consumer spins (with yield) and keeps a core busy.
 template <typename T>
 class MpmcRing {
  public:
@@ -33,16 +31,16 @@ class MpmcRing {
       Cell& c = cells_[pos & mask_];
       std::size_t seq = c.seq.load(std::memory_order_acquire);
       auto diff = static_cast<std::intptr_t>(seq) - static_cast<std::intptr_t>(pos);
-      if (diff == 0) {  // slot free for this position: try to claim it
+      if (diff == 0) {  // slot is free for us, try to claim it
         if (head_.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
           c.item = std::move(item);
           c.seq.store(pos + 1, std::memory_order_release);
           return true;
-        }  // lost the race: pos now holds the current head, loop again
+        }  // lost the race; CAS put the current head in pos, go again
       } else if (diff < 0) {
-        return false;  // slot still holds last lap's item: queue is full
+        return false;  // still holds last lap's item, so we're full
       } else {
-        pos = head_.load(std::memory_order_relaxed);  // another producer moved ahead
+        pos = head_.load(std::memory_order_relaxed);  // someone else got ahead of us
       }
     }
   }
@@ -53,21 +51,21 @@ class MpmcRing {
       Cell& c = cells_[pos & mask_];
       std::size_t seq = c.seq.load(std::memory_order_acquire);
       auto diff = static_cast<std::intptr_t>(seq) - static_cast<std::intptr_t>(pos + 1);
-      if (diff == 0) {  // item published for this position: try to claim it
+      if (diff == 0) {  // an item is ready here, try to claim it
         if (tail_.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
           out = std::move(c.item);
           c.seq.store(pos + mask_ + 1, std::memory_order_release);
           return true;
         }
       } else if (diff < 0) {
-        return false;  // nothing published yet: queue is empty
+        return false;  // nothing here yet, so we're empty
       } else {
         pos = tail_.load(std::memory_order_relaxed);
       }
     }
   }
 
-  // Same interface as BoundedQueue, built on the try_ versions.
+  // Blocking versions, so main.cpp can use either queue the same way.
   [[nodiscard]] bool push(T item) {
     while (!try_push(item)) {
       if (closed_.load(std::memory_order_acquire)) return false;
@@ -80,8 +78,7 @@ class MpmcRing {
     T out;
     for (;;) {
       if (try_pop(out)) return out;
-      // Producers have all finished before close(), so one more try after seeing
-      // closed_ catches the last items; after that the queue really is empty.
+      // close() only happens after every producer is done, so one last try is enough.
       if (closed_.load(std::memory_order_acquire)) return try_pop(out) ? std::optional<T>(out) : std::nullopt;
       std::this_thread::yield();
     }
@@ -90,13 +87,13 @@ class MpmcRing {
   void close() { closed_.store(true, std::memory_order_release); }
 
  private:
-  struct alignas(64) Cell {  // one slot per cache line: neighbouring slots don't false-share
+  struct alignas(64) Cell {  // own cache line, so neighbouring slots don't false-share
     std::atomic<std::size_t> seq;
     T item;
   };
   std::vector<Cell> cells_;
   const std::size_t mask_;
-  alignas(64) std::atomic<std::size_t> head_{0};  // producers' counter, on its own cache line
-  alignas(64) std::atomic<std::size_t> tail_{0};  // consumers' counter, on its own cache line
+  alignas(64) std::atomic<std::size_t> head_{0};  // producers
+  alignas(64) std::atomic<std::size_t> tail_{0};  // consumers
   alignas(64) std::atomic<bool> closed_{false};
 };
